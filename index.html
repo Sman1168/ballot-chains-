@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap">
 <style>
-/* Layout: one narrow column that works as a console. Status banner and tally first, then register, vote booth, and the ledger where tampering is demonstrated. */
+/* Layout: one narrow column. Home is a console (status, tally, voter access, roll, ledger). Sign-in and registration run as separate full pages, one field per page. */
 :root {
   --bg: #f1f4f3;
   --surface: #ffffff;
@@ -40,13 +40,16 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
+  margin: 0;
   background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
   padding-block: 20px 48px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+main { max-width: 760px; margin: 0 auto; }
+.view { display: flex; flex-direction: column; gap: 20px; }
 h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
 h1 { font-size: 1.9rem; line-height: 1.1; }
 h2 { font-size: 1.15rem; }
@@ -64,12 +67,12 @@ header { display: flex; flex-direction: column; gap: 8px; }
 .banner span.d { color: var(--fg); font-size: 0.88rem; }
 .dot { width: 12px; height: 12px; border-radius: 50%; background: currentColor; flex: none; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-input[type="text"], select {
-  font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; min-width: 0; flex: 1 1 160px;
+input:not([type="radio"]), select {
+  font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; min-width: 0; flex: 1 1 160px;
 }
-input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn {
-  font: inherit; font-weight: 600; font-size: 0.9rem; border-radius: 8px; padding: 9px 14px; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink);
+  font: inherit; font-weight: 600; font-size: 0.9rem; border-radius: 8px; padding: 10px 14px; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink);
 }
 .btn:hover { filter: brightness(1.06); }
 .btn.ghost { background: transparent; color: var(--accent); }
@@ -77,7 +80,7 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px s
 .btn.small { padding: 5px 10px; font-size: 0.8rem; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .cands { display: flex; gap: 8px; flex-wrap: wrap; }
-.cands label { flex: 1 1 110px; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; display: flex; gap: 8px; align-items: center; background: var(--bg); }
+.cands label { flex: 1 1 110px; border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; cursor: pointer; display: flex; gap: 8px; align-items: center; background: var(--bg); }
 .cands input { accent-color: var(--accent); }
 .cands label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .msg { font-size: 0.88rem; color: var(--muted); min-height: 1.3em; }
@@ -90,8 +93,7 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px s
 .voters { display: flex; flex-direction: column; }
 .voter { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
 .voter:first-child { border-top: 0; }
-.voter .who { font-weight: 600; flex: 1 1 120px; min-width: 0; }
-.voter .cred { flex: 2 1 200px; color: var(--muted); min-width: 0; }
+.voter .who { font-weight: 600; flex: 1 1 120px; min-width: 0; letter-spacing: 0.04em; }
 .chip { font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .chip.ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
 .chip.bad { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
@@ -110,17 +112,31 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px s
 .vote .mono { color: var(--muted); flex: 1 1 120px; }
 .pending { border: 1px dashed var(--accent); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 footer { color: var(--muted); font-size: 0.82rem; max-width: 66ch; }
+/* sign-in pages */
+.flow { max-width: 520px; margin: 0 auto; width: 100%; }
+.steps { display: flex; gap: 6px; }
+.steps i { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }
+.steps i.done { background: var(--accent); }
+.steps i.cur { background: var(--accent); opacity: 0.5; }
+.field { display: flex; flex-direction: column; gap: 10px; }
+.field > label { font-weight: 600; }
+.notice { border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; font-size: 0.82rem; color: var(--muted); }
+details { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--bg); }
+summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+.demo { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.demo div { display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid var(--line); }
+.demo div:first-child { border-top: 0; padding-top: 0; }
 @media (prefers-reduced-motion: no-preference) { .bar i { transition: width 0.3s; } }
-body { margin: 0; }
 </style>
-
 </head>
 <body>
 <main>
+
+<div class="view" id="view-home">
   <header>
     <span class="label">Tamper-evident e-voting prototype</span>
     <h1>Ballot Chain</h1>
-    <p class="sub">Register voters, cast ballots, and watch them sealed into a hash-linked chain. Then edit a recorded vote and see the audit catch it. This is an example election you can reset at any time.</p>
+    <p class="sub">Voters sign in with four details, one page at a time, plus a phone code. Their ballots are sealed into a hash-linked chain. Edit a recorded vote and the audit catches it. This is an example election you can reset at any time.</p>
   </header>
 
   <div id="banner"></div>
@@ -131,34 +147,38 @@ body { margin: 0; }
   </section>
 
   <section class="panel">
-    <div class="panel-head"><h2>1. Register voters</h2><span class="label">Registrar</span></div>
-    <p class="sub">Each voter gets a secret credential. Only its SHA-256 hash goes on the eligible list, so the ledger never holds names.</p>
-    <form id="regForm" class="row">
-      <input type="text" id="regName" placeholder="Voter name" maxlength="30" autocomplete="off">
-      <button class="btn" type="submit">Issue credential</button>
-    </form>
-    <p class="msg" id="regMsg"></p>
+    <div class="panel-head"><h2>Voter access</h2><span class="label">Sign in to vote</span></div>
+    <p class="sub">Sign-in asks for your full name, phone number, NIN and voter's card number, each on its own page, then a one-time code sent to your phone. Only salted hashes of these details are kept.</p>
+    <div class="row">
+      <button class="btn" type="button" data-a="start-signin">Sign in to vote</button>
+      <button class="btn ghost" type="button" data-a="start-register">Register as a voter</button>
+    </div>
+    <p class="msg bad" id="accessMsg"></p>
+    <details>
+      <summary>Demo accounts for testing</summary>
+      <p class="sub" style="margin-top:8px">Made-up details for this demo only. Do not enter your own NIN or voter's card number.</p>
+      <div class="demo" id="demoList"></div>
+    </details>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Voter roll</h2><span class="label" id="rollMeta"></span></div>
+    <p class="sub">Names are masked. The roll shows who has voted, never how.</p>
     <div class="voters" id="voters"></div>
   </section>
 
   <section class="panel">
-    <div class="panel-head"><h2>2. Cast a vote</h2><span class="label">Voting booth</span></div>
-    <form id="voteForm" style="display:flex;flex-direction:column;gap:12px">
-      <div class="row"><select id="voterSel" aria-label="Voter"></select></div>
-      <div class="cands" id="cands"></div>
-      <div class="row"><button class="btn" type="submit" id="castBtn">Cast vote</button></div>
-    </form>
-    <p class="msg" id="voteMsg"></p>
+    <div class="panel-head"><h2>Ledger and tamper test</h2><button class="btn ghost small" data-a="reset">Reset example</button></div>
     <div id="pending"></div>
-  </section>
-
-  <section class="panel">
-    <div class="panel-head"><h2>3. Ledger and tamper test</h2><button class="btn ghost small" data-a="reset">Reset example</button></div>
-    <p class="sub">Cast a few votes above to fill the ledger (a block seals every 3 votes). Then use the red buttons to play the attacker. The audit recomputes every hash from the stored data and flags the first block that no longer matches. Re-mining a block fixes its own hash, but the next block's link to it breaks, so try it on a block that is not the last one.</p>
+    <p class="sub">Sign in and cast a few votes (a block seals every 3 votes). Then use the red buttons to play the attacker. The audit recomputes every hash from the stored data and flags the first block that no longer matches. Re-mining a block fixes its own hash, but the next block's link to it breaks, so try it on a block that is not the last one.</p>
     <div class="blocks" id="blocks"></div>
   </section>
 
-  <footer>Simplified for teaching: single browser, no network consensus, low proof-of-work difficulty, trusted registrar, no digital signatures or coercion resistance.</footer>
+  <footer>Simplified for teaching: everything runs in this browser tab, with no server, no real NIN or INEC lookup, no network consensus, low proof-of-work difficulty and a trusted registrar. A real system would verify identities against official records on a server and use a slow password hash.</footer>
+</div>
+
+<div class="view" id="view-flow" hidden></div>
+
 </main>
 
 <script>
@@ -194,6 +214,7 @@ function sha(str) {
 
 /* ---------- Chain logic ---------- */
 const DIFFICULTY = 3, BATCH = 3, CANDIDATES = ['Alice', 'Bob', 'Chioma'];
+const SESSION_MS = 120000, MAX_FAILS = 3, LOCK_MS = 30000, OTP_MS = 300000, MAX_CODE_TRIES = 3, MAX_RESENDS = 3;
 const canon = o => JSON.stringify(o, (k, v) => (v && typeof v === 'object' && !Array.isArray(v)) ? Object.keys(v).sort().reduce((r, x) => (r[x] = v[x], r), {}) : v);
 const voteHash = v => sha(canon(v));
 function merkleRoot(leaves) {
@@ -217,20 +238,65 @@ const blockHash = b => sha(canon({ i: b.index, prev: b.prev, t: b.time, root: bl
 function mine(b) { b.nonce = 0; for (;;) { const h = blockHash(b); if (h.startsWith('0'.repeat(DIFFICULTY))) { b.hash = h; return; } b.nonce++; } }
 function randHex(n) { const a = new Uint8Array(n); crypto.getRandomValues(a); return Array.from(a, x => x.toString(16).padStart(2, '0')).join(''); }
 
+/* ---------- Identity checks ---------- */
+const normName = s => String(s).trim().toLowerCase().replace(/\s+/g, ' ');
+const normPhone = s => { const m = String(s).replace(/[\s-]/g, '').match(/^(?:\+?234|0)([789][01]\d{8})$/); return m ? m[1] : null; };
+const normNin = s => /^\d{11}$/.test(String(s).trim()) ? String(s).trim() : null;
+const normCard = s => /^[A-Za-z0-9]{19}$/.test(String(s).trim()) ? String(s).trim().toUpperCase() : null;
+const NAME_RE = /^[\p{L}][\p{L}'-]*(?: [\p{L}][\p{L}'-]*)+$/u;
+const STEPS = [
+  { key: 'name', title: 'Your full name', label: 'Full name', hint: 'First name and last name, as on your voter\'s card.', type: 'text', mode: 'text', ac: 'off', ph: 'e.g. Ada Okafor',
+    validate: v => NAME_RE.test(normName(v)) ? '' : 'Enter your first and last name using letters only.' },
+  { key: 'phone', title: 'Your phone number', label: 'Phone number', hint: 'A Nigerian mobile number, like 0803 123 4567 or +234 803 123 4567.', type: 'tel', mode: 'tel', ac: 'off', ph: '0803 123 4567',
+    validate: v => normPhone(v) ? '' : 'Enter a valid Nigerian mobile number (11 digits starting with 0, or +234 then 10 digits).' },
+  { key: 'nin', title: 'Your NIN', label: 'National Identification Number (NIN)', hint: 'The 11-digit number on your NIN slip or card.', type: 'password', mode: 'numeric', ac: 'off', ph: '11 digits', secret: true,
+    validate: v => normNin(v) ? '' : 'The NIN must be exactly 11 digits.' },
+  { key: 'card', title: 'Your voter\'s card number', label: 'Voter\'s card number (VIN)', hint: 'The 19-character number printed on your permanent voter\'s card.', type: 'password', mode: 'text', ac: 'off', ph: '19 letters and digits', secret: true,
+    validate: v => normCard(v) ? '' : 'The voter\'s card number must be exactly 19 letters and digits.' }
+];
+const maskName = n => n.split(' ').map(w => w[0].toUpperCase() + '*'.repeat(Math.max(2, w.length - 1))).join(' ');
+
 let S;
+const hid = (kind, val) => sha(S.salt + '|' + kind + '|' + val);
 function newElection() {
-  S = { voters: [], eligible: new Set(), used: new Set(), pending: [], chain: [] };
+  S = { salt: randHex(16), voters: [], eligible: new Set(), used: new Set(), pending: [], chain: [], session: null, fails: 0, lockUntil: 0 };
   const g = { index: 0, votes: [], prev: '0'.repeat(64), time: 0, nonce: 0, hash: '' }; mine(g); S.chain.push(g);
 }
-function register(name) {
-  const cred = randHex(16), nullifier = sha(cred);
-  S.eligible.add(nullifier);
-  S.voters.push({ name, cred, nullifier, ballot: null, receipt: null, result: null });
-  return cred;
+function enroll(d) {
+  const name = normName(d.name), phone = normPhone(d.phone), nin = normNin(d.nin), card = normCard(d.card);
+  if (!NAME_RE.test(name) || !phone || !nin || !card) throw new Error('Some details are not in the correct format.');
+  const ninH = hid('nin', nin), cardH = hid('card', card);
+  if (S.voters.some(v => v.ninH === ninH || v.cardH === cardH)) throw new Error('A voter with these details is already registered.');
+  const voter = { label: maskName(name), nameH: hid('name', name), phoneH: hid('phone', phone), ninH, cardH,
+    nullifier: sha(S.salt + '|vote|' + ninH + '|' + cardH), ballot: null, receipt: null, result: null };
+  S.eligible.add(voter.nullifier); S.voters.push(voter);
+  return voter;
 }
+function lockSeconds() { return Math.max(0, Math.ceil((S.lockUntil - Date.now()) / 1000)); }
+function checkIdentity(d) {
+  const name = normName(d.name), phone = normPhone(d.phone), nin = normNin(d.nin), card = normCard(d.card);
+  const v = (phone && nin && card) ? S.voters.find(x => x.ninH === hid('nin', nin)) : null;
+  return (v && v.cardH === hid('card', card) && v.phoneH === hid('phone', phone) && v.nameH === hid('name', name)) ? v : null;
+}
+function failAttempt() {
+  S.fails++;
+  if (S.fails >= MAX_FAILS) { S.fails = 0; S.lockUntil = Date.now() + LOCK_MS; return 'Too many failed attempts. Sign-in is locked for ' + (LOCK_MS / 1000) + ' seconds.'; }
+  const left = MAX_FAILS - S.fails;
+  return 'The details or the code did not match. Check them and try again. (' + left + ' attempt' + (left === 1 ? '' : 's') + ' left.)';
+}
+/* One-time code. A code is always issued, so a wrong detail cannot be told apart from a right one until the end. */
+function randCode() { const n = new Uint32Array(1); crypto.getRandomValues(n); return String(n[0] % 1000000).padStart(6, '0'); }
+function newChallenge(d, mode) {
+  const code = randCode();
+  return { code, codeH: hid('otp', code), exp: Date.now() + OTP_MS, tries: 0, resends: 0, voter: mode === 'signin' ? checkIdentity(d) : null };
+}
+function resendChallenge(ch) { ch.code = randCode(); ch.codeH = hid('otp', ch.code); ch.exp = Date.now() + OTP_MS; ch.tries = 0; ch.resends++; }
+const maskPhone = p => { const n = normPhone(p) || ''; return '0' + n.slice(0, 3) + ' *** ' + n.slice(-4); };
+const sessionOk = () => !!(S.session && Date.now() < S.session.exp);
 function castVote(voter, candidate) {
+  if (!CANDIDATES.includes(candidate)) throw new Error('Unknown candidate');
   if (!S.eligible.has(voter.nullifier)) throw new Error('Not an eligible voter');
-  if (S.used.has(voter.nullifier)) throw new Error('Double vote rejected');
+  if (S.used.has(voter.nullifier)) throw new Error('You have already voted. Double voting is rejected.');
   const v = { ballot_id: randHex(8), nullifier: voter.nullifier, candidate };
   S.used.add(voter.nullifier); voter.ballot = v.ballot_id; S.pending.push(v);
   if (S.pending.length >= BATCH) seal();
@@ -262,20 +328,26 @@ function audit() {
 function checkReceipt(v) {
   const r = v.receipt; if (!r) return { ok: false, t: 'No receipt yet. Seal the block first.' };
   const b = S.chain[r.block], cur = b.votes.find(x => x.ballot_id === v.ballot);
-  if (!cur) return { ok: false, t: 'Receipt failed: your ballot is missing from block ' + r.block + '.' };
+  if (!cur) return { ok: false, t: 'Receipt failed: the ballot is missing from block ' + r.block + '.' };
   if (voteHash(cur) !== r.leaf || !verifyProof(r.leaf, r.proof, r.root) || blockRoot(b) !== r.root || blockHash(b) !== b.hash)
-    return { ok: false, t: 'Receipt failed: the recorded vote no longer matches what you cast.' };
-  return { ok: true, t: 'Receipt valid: your ballot is in block ' + r.block + ' exactly as cast.' };
+    return { ok: false, t: 'Receipt failed: the recorded vote no longer matches what was cast.' };
+  return { ok: true, t: 'Receipt valid: the ballot is in block ' + r.block + ' exactly as cast.' };
 }
 
 /* ---------- Rendering ---------- */
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const short = (h, n = 14) => h.slice(0, n) + '…';
+const DEMO = [
+  { name: 'Ada Okafor', phone: '08031234567', nin: '12345678901', card: '90F5B12345678901234' },
+  { name: 'Bola Adeyemi', phone: '08052345678', nin: '23456789012', card: '91A2C23456789012345' },
+  { name: 'Chidi Nwosu', phone: '07063456789', nin: '34567890123', card: '92B3D34567890123456' }
+];
+let F = { mode: null, data: {}, outcome: null, msg: '', title: '' };
 
 function renderBanner(a) {
   $('banner').innerHTML = a.ok
-    ? `<div class="banner ok"><span class="dot"></span><div><strong>Audit passed</strong><span class="d">${S.chain.length} blocks, every hash and link verified.</span></div></div>`
+    ? `<div class="banner ok"><span class="dot"></span><div><strong>Audit passed</strong><span class="d">${S.chain.length} block${S.chain.length === 1 ? '' : 's'}, every hash and link verified.</span></div></div>`
     : `<div class="banner bad"><span class="dot"></span><div><strong>Tampering detected</strong><span class="d">${esc(a.msg)}</span></div></div>`;
 }
 function renderTally() {
@@ -286,15 +358,12 @@ function renderTally() {
   $('tally').innerHTML = CANDIDATES.map(n => `<div class="tally-row"><span>${esc(n)}</span><div class="bar"><i style="width:${c[n] / max * 100}%"></i></div><b>${c[n]}</b></div>`).join('');
 }
 function renderVoters() {
+  $('rollMeta').textContent = S.voters.length + ' registered';
   $('voters').innerHTML = S.voters.map((v, i) => {
     const sealed = v.receipt, state = !v.ballot ? '<span class="chip">Not voted</span>' : sealed ? '<span class="chip ok">Vote sealed</span>' : '<span class="chip wait">In pending pool</span>';
     const res = v.result ? `<div class="msg ${v.result.ok ? 'ok' : 'bad'}" style="flex-basis:100%">${esc(v.result.t)}</div>` : '';
-    return `<div class="voter"><span class="who">${esc(v.name)}</span><span class="cred mono" title="Secret credential, known only to the voter">secret ${esc(v.cred.slice(0, 8))}… → ledger ID ${esc(v.nullifier.slice(0, 8))}…</span>${state}${sealed ? `<button class="btn ghost small" data-a="receipt" data-i="${i}">Check receipt</button>` : ''}${res}</div>`;
-  }).join('') || '<p class="sub">No voters yet.</p>';
-  const sel = $('voterSel'), prev = sel.value, open = S.voters.map((v, i) => [v, i]).filter(([v]) => !v.ballot);
-  sel.innerHTML = open.length ? open.map(([v, i]) => `<option value="${i}">${esc(v.name)}</option>`).join('') : '<option value="">All registered voters have voted</option>';
-  if (open.some(([, i]) => String(i) === prev)) sel.value = prev;
-  $('castBtn').disabled = !open.length;
+    return `<div class="voter"><span class="who mono">${esc(v.label)}</span>${state}${sealed ? `<button class="btn ghost small" data-a="receipt" data-i="${i}">Check receipt</button>` : ''}${res}</div>`;
+  }).join('') || '<p class="sub">No voters registered yet.</p>';
 }
 function renderPending() {
   $('pending').innerHTML = S.pending.length ? `<div class="pending"><div class="row" style="justify-content:space-between"><span class="label">Pending pool (${S.pending.length} of ${BATCH})</span><button class="btn small" data-a="seal">Seal block now</button></div>${S.pending.map(v => `<div class="vote"><span class="cand">${esc(v.candidate)}</span><span class="mono">${esc(short(v.nullifier))}</span></div>`).join('')}<p class="msg">Blocks seal automatically at ${BATCH} votes. Pending votes are not on the chain yet.</p></div>` : '';
@@ -317,45 +386,195 @@ function renderBlocks(a) {
     </article>`;
   }).join('');
 }
-function render() { const a = audit(); renderBanner(a); renderTally(); renderVoters(); renderPending(); renderBlocks(a); }
+function renderHome() {
+  const a = audit(); renderBanner(a); renderTally(); renderVoters(); renderPending(); renderBlocks(a);
+  $('demoList').innerHTML = DEMO.map(d => `<div><b>${esc(d.name)}</b><span class="mono">Phone ${esc(d.phone)}</span><span class="mono">NIN ${esc(d.nin)}</span><span class="mono">Card ${esc(d.card)}</span></div>`).join('');
+}
+
+/* ---------- Pages (hash routes: home, name, phone, nin, card, vote, done, registered, denied) ---------- */
+const STEP_KEYS = STEPS.map(s => s.key);
+const TOTAL = STEPS.length + 1;
+const FLOW = $('view-flow');
+function showView(flow) { $('view-home').hidden = flow; FLOW.hidden = !flow; }
+function redirect(h) { location.replace('#' + h); }
+const stepBars = i => Array.from({ length: TOTAL }, (_, k) => `<i class="${k < i ? 'done' : k === i ? 'cur' : ''}"></i>`).join('');
+function renderCode() {
+  const signin = F.mode === 'signin', ch = F.otp, mins = Math.round(OTP_MS / 60000);
+  FLOW.innerHTML = `<section class="panel flow">
+    <div class="panel-head"><span class="label">Step ${TOTAL} of ${TOTAL} · ${signin ? 'Sign in' : 'Register'}</span><button class="btn ghost small" type="button" data-a="cancel">Cancel</button></div>
+    <div class="steps" aria-hidden="true">${stepBars(TOTAL - 1)}</div>
+    <h2>Check your phone</h2>
+    <form id="otpForm" class="field" novalidate>
+      <label for="otpInput">6-digit code</label>
+      <p class="sub">We sent a code to ${esc(maskPhone(F.data.phone))}. It is valid for ${mins} minutes.</p>
+      <input id="otpInput" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <p class="msg bad" id="otpMsg" role="alert"></p>
+      <div class="row">
+        <button class="btn ghost" type="button" data-go="card">Back</button>
+        <button class="btn" type="submit">${signin ? 'Verify and sign in' : 'Verify and register'}</button>
+        <button class="btn ghost small" type="button" data-a="resend">Send a new code</button>
+      </div>
+    </form>
+    <div class="notice"><b>Demo SMS inbox.</b> A real system sends this by SMS to the registered phone. No text message is sent here, so the code is shown instead.<br><span class="mono" id="smsBox">Ballot Chain code: ${esc(ch.code)}</span></div>
+  </section>`;
+  showView(true); $('otpInput').focus();
+}
+function renderStep(i) {
+  const st = STEPS[i], signin = F.mode === 'signin';
+  const bars = stepBars(i);
+  FLOW.innerHTML = `<section class="panel flow">
+    <div class="panel-head"><span class="label">Step ${i + 1} of ${TOTAL} · ${signin ? 'Sign in' : 'Register'}</span><button class="btn ghost small" type="button" data-a="cancel">Cancel</button></div>
+    <div class="steps" aria-hidden="true">${bars}</div>
+    <h2>${esc(st.title)}</h2>
+    <form id="stepForm" class="field" novalidate>
+      <label for="stepInput">${esc(st.label)}</label>
+      <p class="sub">${esc(st.hint)}</p>
+      <div class="row">
+        <input id="stepInput" name="${st.key}" type="${st.type}" inputmode="${st.mode}" autocomplete="${st.ac}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="${esc(st.ph)}" value="${esc(F.data[st.key] || '')}">
+        ${st.secret ? '<button class="btn ghost small" type="button" data-a="toggle">Show</button>' : ''}
+      </div>
+      <p class="msg bad" id="stepMsg" role="alert"></p>
+      <div class="row">
+        ${i > 0 ? `<button class="btn ghost" type="button" data-go="${STEP_KEYS[i - 1]}">Back</button>` : ''}
+        <button class="btn" type="submit">Continue</button>
+      </div>
+    </form>
+    <p class="notice">Demo only. Details stay in this browser tab and are kept only as salted hashes. Do not enter a real NIN or voter's card number; use the demo accounts on the home page.</p>
+  </section>`;
+  showView(true); $('stepInput').focus();
+}
+function renderVote() {
+  const v = S.voters[S.session.i];
+  FLOW.innerHTML = `<section class="panel flow">
+    <div class="panel-head"><span class="label">Voting booth</span><button class="btn ghost small" type="button" data-a="signout">Sign out</button></div>
+    <div class="banner ok"><span class="dot"></span><div><strong>Signed in</strong><span class="d mono">${esc(v.label)}</span></div></div>
+    <h2>Choose one candidate</h2>
+    <form id="voteForm" class="field">
+      <div class="cands">${CANDIDATES.map((c, i) => `<label><input type="radio" name="cand" value="${esc(c)}"${i === 0 ? ' checked' : ''}>${esc(c)}</label>`).join('')}</div>
+      <p class="msg bad" id="voteMsg" role="alert"></p>
+      <button class="btn" type="submit">Cast vote</button>
+    </form>
+    <p class="notice">Your session ends after ${SESSION_MS / 60000} minutes or when you cast your vote. The ledger stores an anonymous ID, not your name.</p>
+  </section>`;
+  showView(true);
+}
+function renderOutcome(kind) {
+  const v = F.voter;
+  const body = {
+    done: `<div class="banner ok"><span class="dot"></span><div><strong>Vote recorded</strong><span class="d">${v && v.receipt ? 'Sealed in block ' + v.receipt.block + '.' : 'In the pending pool. It is sealed into a block when 3 votes are in.'}</span></div></div>
+      <p class="sub">Ballot ID <span class="mono">${esc(F.ballot || '')}</span>. You have been signed out. Use "Check receipt" on the home page to confirm your vote stays unchanged.</p>
+      <div class="row"><button class="btn" type="button" data-go="home">Back to results</button></div>`,
+    registered: `<div class="banner ok"><span class="dot"></span><div><strong>Voter record created</strong><span class="d">Your details are stored only as salted hashes.</span></div></div>
+      <p class="sub">Now sign in with the same four details to vote.</p>
+      <div class="row"><button class="btn" type="button" data-a="start-signin">Sign in now</button><button class="btn ghost" type="button" data-go="home">Home</button></div>`,
+    denied: `<div class="banner bad"><span class="dot"></span><div><strong>${esc(F.title)}</strong><span class="d">${esc(F.msg)}</span></div></div>
+      <div class="row"><button class="btn" type="button" data-a="again">Try again</button><button class="btn ghost" type="button" data-go="home">Home</button></div>`
+  }[kind];
+  FLOW.innerHTML = `<section class="panel flow">${body}</section>`;
+  showView(true);
+}
+function route() {
+  const r = location.hash.slice(1) || 'home', idx = STEP_KEYS.indexOf(r);
+  if (idx >= 0) {
+    if (!F.mode) return redirect('home');
+    for (let k = 0; k < idx; k++) if (!F.data[STEP_KEYS[k]]) return redirect(STEP_KEYS[k]);
+    renderStep(idx);
+  } else if (r === 'code') {
+    if (!F.mode) return redirect('home');
+    for (let k = 0; k < STEP_KEYS.length; k++) if (!F.data[STEP_KEYS[k]]) return redirect(STEP_KEYS[k]);
+    if (!F.otp) return redirect('card');
+    renderCode();
+  } else if (r === 'vote') {
+    if (!sessionOk()) { S.session = null; $('accessMsg').textContent = 'Your session has ended. Sign in again to vote.'; showView(false); renderHome(); return redirect('home'); }
+    renderVote();
+  } else if (r === 'done' || r === 'registered' || r === 'denied') {
+    if (F.outcome !== r) return redirect('home');
+    renderOutcome(r);
+  } else { showView(false); renderHome(); }
+  window.scrollTo(0, 0);
+}
+function startFlow(mode) {
+  const lock = lockSeconds();
+  if (mode === 'signin' && lock > 0) { $('accessMsg').textContent = 'Too many failed attempts. Try again in ' + lock + ' seconds.'; return; }
+  $('accessMsg').textContent = '';
+  F = { mode, data: {}, outcome: null, msg: '', title: '' };
+  location.hash = '#name';
+}
+function deny(title, msg) { F.outcome = 'denied'; F.title = title; F.msg = msg; F.data = {}; F.otp = null; location.hash = '#denied'; }
+function afterDetails() {
+  if (F.mode === 'signin' && lockSeconds() > 0) return deny('Sign-in locked', 'Too many failed attempts. Try again in ' + lockSeconds() + ' seconds.');
+  F.otp = newChallenge(F.data, F.mode);
+  location.hash = '#code';
+}
+function submitCode(entered) {
+  const ch = F.otp;
+  if (Date.now() > ch.exp) return deny('Code expired', 'The code was not used in time. Start again.');
+  ch.tries++;
+  if (hid('otp', entered) !== ch.codeH) {
+    if (ch.tries < MAX_CODE_TRIES) return 'That code is not correct. ' + (MAX_CODE_TRIES - ch.tries) + ' ' + (MAX_CODE_TRIES - ch.tries === 1 ? 'try' : 'tries') + ' left.';
+    return F.mode === 'signin' ? deny('Sign-in failed', failAttempt()) : deny('Phone not verified', 'Too many incorrect codes. Start again.');
+  }
+  if (F.mode === 'signin') {
+    if (!ch.voter) return deny('Sign-in failed', failAttempt());
+    S.fails = 0; S.session = { i: S.voters.indexOf(ch.voter), exp: Date.now() + SESSION_MS };
+    F.data = {}; F.otp = null; location.hash = '#vote'; return;
+  }
+  try { enroll(F.data); F.outcome = 'registered'; F.data = {}; F.otp = null; location.hash = '#registered'; }
+  catch (e) { deny('Could not register', e.message); }
+}
 
 /* ---------- Events ---------- */
 document.addEventListener('click', e => {
+  const g = e.target.closest('[data-go]'); if (g) { location.hash = '#' + g.dataset.go; return; }
   const t = e.target.closest('[data-a]'); if (!t) return;
   const a = t.dataset.a;
-  if (a === 'seal') seal();
-  if (a === 'reset') { seed(); $('regMsg').textContent = ''; $('voteMsg').textContent = ''; return; }
-  if (a === 'flip') {
-    const v = S.chain[+t.dataset.b].votes[+t.dataset.j]; v.candidate = CANDIDATES[(CANDIDATES.indexOf(v.candidate) + 1) % CANDIDATES.length];
+  if (a === 'start-signin') return startFlow('signin');
+  if (a === 'start-register') return startFlow('register');
+  if (a === 'again') return startFlow(F.mode);
+  if (a === 'cancel') { F = { mode: null, data: {}, outcome: null, msg: '', title: '' }; location.hash = '#home'; return; }
+  if (a === 'signout') { S.session = null; F = { mode: null, data: {}, outcome: null, msg: '', title: '' }; location.hash = '#home'; return; }
+  if (a === 'toggle') { const inp = $('stepInput'), show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; t.textContent = show ? 'Hide' : 'Show'; inp.focus(); return; }
+  if (a === 'resend') {
+    if (F.otp.resends >= MAX_RESENDS) { $('otpMsg').textContent = 'No more new codes. Start again.'; return; }
+    resendChallenge(F.otp); renderCode(); $('otpMsg').textContent = 'A new code was sent. The old code no longer works.'; return;
   }
+  if (a === 'reset') { seed(); $('accessMsg').textContent = ''; return; }
+  if (a === 'seal') seal();
+  if (a === 'flip') { const v = S.chain[+t.dataset.b].votes[+t.dataset.j]; v.candidate = CANDIDATES[(CANDIDATES.indexOf(v.candidate) + 1) % CANDIDATES.length]; }
   if (a === 'remine') mine(S.chain[+t.dataset.b]);
   if (a === 'receipt') { const v = S.voters[+t.dataset.i]; v.result = checkReceipt(v); }
-  render();
+  renderHome();
 });
-$('regForm').addEventListener('submit', e => {
+document.addEventListener('submit', e => {
   e.preventDefault();
-  const n = $('regName').value.trim(), m = $('regMsg');
-  if (!n) { m.className = 'msg bad'; m.textContent = 'Enter a voter name first.'; return; }
-  const c = register(n); $('regName').value = '';
-  m.className = 'msg ok'; m.textContent = 'Credential issued to ' + n + ' (' + c.slice(0, 8) + '…). Only its hash is on the eligible list.';
-  render();
+  if (e.target.id === 'stepForm') {
+    const i = STEP_KEYS.indexOf(location.hash.slice(1)); if (i < 0) return;
+    const val = $('stepInput').value.trim(), err = STEPS[i].validate(val);
+    if (err) { $('stepMsg').textContent = err; $('stepInput').focus(); return; }
+    F.data[STEPS[i].key] = val;
+    if (i < STEPS.length - 1) location.hash = '#' + STEP_KEYS[i + 1]; else afterDetails();
+  }
+  if (e.target.id === 'otpForm') {
+    const entered = $('otpInput').value.trim();
+    if (!/^\d{6}$/.test(entered)) { $('otpMsg').textContent = 'Enter the 6-digit code.'; $('otpInput').focus(); return; }
+    const msg = submitCode(entered);
+    if (msg) { $('otpMsg').textContent = msg; $('otpInput').value = ''; $('otpInput').focus(); }
+  }
+  if (e.target.id === 'voteForm') {
+    if (!sessionOk()) { S.session = null; return route(); }
+    const cand = (document.querySelector('input[name=cand]:checked') || {}).value, v = S.voters[S.session.i];
+    try { castVote(v, cand); } catch (err) { $('voteMsg').textContent = err.message; return; }
+    S.session = null; F = { mode: null, data: {}, outcome: 'done', msg: '', title: '', voter: v, ballot: v.ballot };
+    location.hash = '#done';
+  }
 });
-$('voteForm').addEventListener('submit', e => {
-  e.preventDefault();
-  const m = $('voteMsg'), i = $('voterSel').value, cand = (document.querySelector('input[name=cand]:checked') || {}).value;
-  if (i === '' ) return;
-  if (!cand) { m.className = 'msg bad'; m.textContent = 'Choose a candidate.'; return; }
-  try { const v = S.voters[+i]; castVote(v, cand); m.className = 'msg ok'; m.textContent = v.name + ' voted. The ballot is ' + (v.receipt ? 'sealed in a block.' : 'in the pending pool.'); }
-  catch (err) { m.className = 'msg bad'; m.textContent = err.message; }
-  render();
-});
+window.addEventListener('hashchange', route);
 function seed() {
   newElection();
-  ['Ada', 'Bola', 'Chidi', 'Dayo', 'Efe', 'Funke', 'Gbenga'].forEach(register);
-  S.voters.forEach(v => v.result = null);
-  render();
+  DEMO.forEach(enroll);
+  F = { mode: null, data: {}, outcome: null, msg: '', title: '' };
+  if (location.hash && location.hash !== '#home') location.hash = '#home'; else route();
 }
-$('cands').innerHTML = CANDIDATES.map((c, i) => `<label><input type="radio" name="cand" value="${c}"${i === 0 ? ' checked' : ''}>${c}</label>`).join('');
 seed();
 </script>
 </body>
