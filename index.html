@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ballot Chain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one narrow column that works as a console. Status banner and tally first, then register, vote booth, and the ledger where tampering is demonstrated. */
+:root {
+  --bg: #f1f4f3;
+  --surface: #ffffff;
+  --fg: #14201c;
+  --muted: #55655f;
+  --line: #d3dbd8;
+  --accent: #0b6e5a;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcefe9;
+  --ok: #17794a;
+  --ok-soft: #dff3e8;
+  --bad: #b8321f;
+  --bad-soft: #fbe6e2;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1614; --surface: #16211e; --fg: #e5eeea; --muted: #94a69e; --line: #2a3b36;
+    --accent: #3cc7a4; --accent-ink: #05231b; --accent-soft: #163c33;
+    --ok: #55d18f; --ok-soft: #14352a; --bad: #ff8070; --bad-soft: #3b1d18;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1614; --surface: #16211e; --fg: #e5eeea; --muted: #94a69e; --line: #2a3b36;
+  --accent: #3cc7a4; --accent-ink: #05231b; --accent-soft: #163c33;
+  --ok: #55d18f; --ok-soft: #14352a; --bad: #ff8070; --bad-soft: #3b1d18;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: 1.9rem; line-height: 1.1; }
+h2 { font-size: 1.15rem; }
+p { margin: 0; }
+.sub { color: var(--muted); max-width: 62ch; }
+.mono { font-family: var(--font-mono); font-size: 0.8rem; overflow-wrap: anywhere; }
+.label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+header { display: flex; flex-direction: column; gap: 8px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.banner { border-radius: 10px; padding: 14px 16px; display: flex; gap: 12px; align-items: center; border: 1px solid transparent; }
+.banner.ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+.banner.bad { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+.banner strong { font-family: var(--font-display); font-size: 1.05rem; display: block; }
+.banner span.d { color: var(--fg); font-size: 0.88rem; }
+.dot { width: 12px; height: 12px; border-radius: 50%; background: currentColor; flex: none; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+input[type="text"], select {
+  font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; min-width: 0; flex: 1 1 160px;
+}
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn {
+  font: inherit; font-weight: 600; font-size: 0.9rem; border-radius: 8px; padding: 9px 14px; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink);
+}
+.btn:hover { filter: brightness(1.06); }
+.btn.ghost { background: transparent; color: var(--accent); }
+.btn.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
+.btn.small { padding: 5px 10px; font-size: 0.8rem; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.cands { display: flex; gap: 8px; flex-wrap: wrap; }
+.cands label { flex: 1 1 110px; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; display: flex; gap: 8px; align-items: center; background: var(--bg); }
+.cands input { accent-color: var(--accent); }
+.cands label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.msg { font-size: 0.88rem; color: var(--muted); min-height: 1.3em; }
+.msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); }
+.tally { display: flex; flex-direction: column; gap: 10px; }
+.tally-row { display: grid; grid-template-columns: 90px 1fr 34px; gap: 10px; align-items: center; }
+.bar { height: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.tally-row b { text-align: right; font-variant-numeric: tabular-nums; }
+.voters { display: flex; flex-direction: column; }
+.voter { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.voter:first-child { border-top: 0; }
+.voter .who { font-weight: 600; flex: 1 1 120px; min-width: 0; }
+.voter .cred { flex: 2 1 200px; color: var(--muted); min-width: 0; }
+.chip { font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.chip.ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+.chip.wait { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.blocks { display: flex; flex-direction: column; gap: 12px; }
+.block { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; background: var(--bg); min-width: 0; }
+.block.bad { border-color: var(--bad); background: var(--bad-soft); }
+.block-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.kv { display: grid; grid-template-columns: 78px 1fr; gap: 3px 10px; align-items: baseline; }
+.kv dt { color: var(--muted); font-size: 0.75rem; }
+.kv dd { margin: 0; min-width: 0; }
+.kv dd.diff { color: var(--bad); }
+.vlist { display: flex; flex-direction: column; gap: 6px; }
+.vote { display: flex; gap: 8px 12px; align-items: center; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+.vote .cand { font-weight: 600; min-width: 70px; }
+.vote .mono { color: var(--muted); flex: 1 1 120px; }
+.pending { border: 1px dashed var(--accent); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+footer { color: var(--muted); font-size: 0.82rem; max-width: 66ch; }
+@media (prefers-reduced-motion: no-preference) { .bar i { transition: width 0.3s; } }
+body { margin: 0; }
+</style>
+
+</head>
+<body>
+<main>
+  <header>
+    <span class="label">Tamper-evident e-voting prototype</span>
+    <h1>Ballot Chain</h1>
+    <p class="sub">Register voters, cast ballots, and watch them sealed into a hash-linked chain. Then edit a recorded vote and see the audit catch it. This is an example election you can reset at any time.</p>
+  </header>
+
+  <div id="banner"></div>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Result from the ledger</h2><span class="label" id="tallyMeta"></span></div>
+    <div class="tally" id="tally"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>1. Register voters</h2><span class="label">Registrar</span></div>
+    <p class="sub">Each voter gets a secret credential. Only its SHA-256 hash goes on the eligible list, so the ledger never holds names.</p>
+    <form id="regForm" class="row">
+      <input type="text" id="regName" placeholder="Voter name" maxlength="30" autocomplete="off">
+      <button class="btn" type="submit">Issue credential</button>
+    </form>
+    <p class="msg" id="regMsg"></p>
+    <div class="voters" id="voters"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>2. Cast a vote</h2><span class="label">Voting booth</span></div>
+    <form id="voteForm" style="display:flex;flex-direction:column;gap:12px">
+      <div class="row"><select id="voterSel" aria-label="Voter"></select></div>
+      <div class="cands" id="cands"></div>
+      <div class="row"><button class="btn" type="submit" id="castBtn">Cast vote</button></div>
+    </form>
+    <p class="msg" id="voteMsg"></p>
+    <div id="pending"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>3. Ledger and tamper test</h2><button class="btn ghost small" data-a="reset">Reset example</button></div>
+    <p class="sub">Cast a few votes above to fill the ledger (a block seals every 3 votes). Then use the red buttons to play the attacker. The audit recomputes every hash from the stored data and flags the first block that no longer matches. Re-mining a block fixes its own hash, but the next block's link to it breaks, so try it on a block that is not the last one.</p>
+    <div class="blocks" id="blocks"></div>
+  </section>
+
+  <footer>Simplified for teaching: single browser, no network consensus, low proof-of-work difficulty, trusted registrar, no digital signatures or coercion resistance.</footer>
+</main>
+
+<script>
+/* ---------- SHA-256 (synchronous, so the chain logic stays simple) ---------- */
+const SHA_K = [], SHA_H0 = [];
+(function () {
+  const primes = []; for (let n = 2; primes.length < 64; n++) { if (primes.every(p => n % p)) primes.push(n); }
+  primes.forEach((p, i) => { SHA_K[i] = (Math.pow(p, 1 / 3) % 1) * 4294967296 | 0; if (i < 8) SHA_H0[i] = (Math.pow(p, 1 / 2) % 1) * 4294967296 | 0; });
+})();
+function sha(str) {
+  const bytes = new TextEncoder().encode(str), l = bytes.length, bits = l * 8;
+  const total = ((l + 9 + 63) >> 6) << 6, buf = new Uint8Array(total); buf.set(bytes); buf[l] = 0x80;
+  const dv = new DataView(buf.buffer); dv.setUint32(total - 8, Math.floor(bits / 4294967296)); dv.setUint32(total - 4, bits >>> 0);
+  const h = SHA_H0.slice(), w = new Int32Array(64), ror = (x, n) => (x >>> n) | (x << (32 - n));
+  for (let o = 0; o < total; o += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(o + i * 4);
+    for (let i = 16; i < 64; i++) {
+      const a = w[i - 15], b = w[i - 2];
+      w[i] = (w[i - 16] + (ror(a, 7) ^ ror(a, 18) ^ (a >>> 3)) + w[i - 7] + (ror(b, 17) ^ ror(b, 19) ^ (b >>> 10))) | 0;
+    }
+    let [a, b, c, d, e, f, g, hh] = h;
+    for (let i = 0; i < 64; i++) {
+      const t1 = (hh + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + SHA_K[i] + w[i]) | 0;
+      const t2 = ((ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      hh = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    h[0] = (h[0] + a) | 0; h[1] = (h[1] + b) | 0; h[2] = (h[2] + c) | 0; h[3] = (h[3] + d) | 0;
+    h[4] = (h[4] + e) | 0; h[5] = (h[5] + f) | 0; h[6] = (h[6] + g) | 0; h[7] = (h[7] + hh) | 0;
+  }
+  return h.map(x => (x >>> 0).toString(16).padStart(8, '0')).join('');
+}
+/*END_SHA*/
+
+/* ---------- Chain logic ---------- */
+const DIFFICULTY = 3, BATCH = 3, CANDIDATES = ['Alice', 'Bob', 'Chioma'];
+const canon = o => JSON.stringify(o, (k, v) => (v && typeof v === 'object' && !Array.isArray(v)) ? Object.keys(v).sort().reduce((r, x) => (r[x] = v[x], r), {}) : v);
+const voteHash = v => sha(canon(v));
+function merkleRoot(leaves) {
+  if (!leaves.length) return sha('');
+  let lv = leaves.slice();
+  while (lv.length > 1) { if (lv.length % 2) lv.push(lv[lv.length - 1]); const n = []; for (let i = 0; i < lv.length; i += 2) n.push(sha(lv[i] + lv[i + 1])); lv = n; }
+  return lv[0];
+}
+function merkleProof(leaves, idx) {
+  const proof = []; let lv = leaves.slice();
+  while (lv.length > 1) {
+    if (lv.length % 2) lv.push(lv[lv.length - 1]);
+    const s = idx ^ 1; proof.push([lv[s], s < idx ? 'left' : 'right']);
+    const n = []; for (let i = 0; i < lv.length; i += 2) n.push(sha(lv[i] + lv[i + 1])); lv = n; idx >>= 1;
+  }
+  return proof;
+}
+const verifyProof = (leaf, proof, root) => proof.reduce((h, [s, side]) => side === 'left' ? sha(s + h) : sha(h + s), leaf) === root;
+const blockRoot = b => merkleRoot(b.votes.map(voteHash));
+const blockHash = b => sha(canon({ i: b.index, prev: b.prev, t: b.time, root: blockRoot(b), n: b.nonce }));
+function mine(b) { b.nonce = 0; for (;;) { const h = blockHash(b); if (h.startsWith('0'.repeat(DIFFICULTY))) { b.hash = h; return; } b.nonce++; } }
+function randHex(n) { const a = new Uint8Array(n); crypto.getRandomValues(a); return Array.from(a, x => x.toString(16).padStart(2, '0')).join(''); }
+
+let S;
+function newElection() {
+  S = { voters: [], eligible: new Set(), used: new Set(), pending: [], chain: [] };
+  const g = { index: 0, votes: [], prev: '0'.repeat(64), time: 0, nonce: 0, hash: '' }; mine(g); S.chain.push(g);
+}
+function register(name) {
+  const cred = randHex(16), nullifier = sha(cred);
+  S.eligible.add(nullifier);
+  S.voters.push({ name, cred, nullifier, ballot: null, receipt: null, result: null });
+  return cred;
+}
+function castVote(voter, candidate) {
+  if (!S.eligible.has(voter.nullifier)) throw new Error('Not an eligible voter');
+  if (S.used.has(voter.nullifier)) throw new Error('Double vote rejected');
+  const v = { ballot_id: randHex(8), nullifier: voter.nullifier, candidate };
+  S.used.add(voter.nullifier); voter.ballot = v.ballot_id; S.pending.push(v);
+  if (S.pending.length >= BATCH) seal();
+}
+function seal() {
+  if (!S.pending.length) return;
+  const b = { index: S.chain.length, votes: S.pending, prev: S.chain[S.chain.length - 1].hash, time: Date.now() / 1000, nonce: 0, hash: '' };
+  mine(b); S.chain.push(b); S.pending = [];
+  const leaves = b.votes.map(voteHash), root = merkleRoot(leaves);
+  b.votes.forEach((v, i) => { const vt = S.voters.find(x => x.nullifier === v.nullifier); if (vt) vt.receipt = { block: b.index, leaf: leaves[i], proof: merkleProof(leaves, i), root }; });
+}
+function audit() {
+  const seen = new Set(), blocks = []; let first = null;
+  S.chain.forEach((b, i) => {
+    let err = null;
+    if (blockHash(b) !== b.hash) err = 'contents no longer match the stored hash';
+    else if (!b.hash.startsWith('0'.repeat(DIFFICULTY))) err = 'proof of work is invalid';
+    else if (i > 0 && b.prev !== S.chain[i - 1].hash) err = 'link to block ' + (i - 1) + ' is broken';
+    else for (const v of b.votes) {
+      if (!S.eligible.has(v.nullifier)) { err = 'contains a vote from an ineligible voter'; break; }
+      if (seen.has(v.nullifier)) { err = 'contains a duplicate vote'; break; }
+      if (!CANDIDATES.includes(v.candidate)) { err = 'contains an invalid candidate'; break; }
+      seen.add(v.nullifier);
+    }
+    blocks.push(err); if (err && !first) first = 'Block ' + i + ' ' + err + '.';
+  });
+  return { ok: !first, msg: first, blocks };
+}
+function checkReceipt(v) {
+  const r = v.receipt; if (!r) return { ok: false, t: 'No receipt yet. Seal the block first.' };
+  const b = S.chain[r.block], cur = b.votes.find(x => x.ballot_id === v.ballot);
+  if (!cur) return { ok: false, t: 'Receipt failed: your ballot is missing from block ' + r.block + '.' };
+  if (voteHash(cur) !== r.leaf || !verifyProof(r.leaf, r.proof, r.root) || blockRoot(b) !== r.root || blockHash(b) !== b.hash)
+    return { ok: false, t: 'Receipt failed: the recorded vote no longer matches what you cast.' };
+  return { ok: true, t: 'Receipt valid: your ballot is in block ' + r.block + ' exactly as cast.' };
+}
+
+/* ---------- Rendering ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const short = (h, n = 14) => h.slice(0, n) + '…';
+
+function renderBanner(a) {
+  $('banner').innerHTML = a.ok
+    ? `<div class="banner ok"><span class="dot"></span><div><strong>Audit passed</strong><span class="d">${S.chain.length} blocks, every hash and link verified.</span></div></div>`
+    : `<div class="banner bad"><span class="dot"></span><div><strong>Tampering detected</strong><span class="d">${esc(a.msg)}</span></div></div>`;
+}
+function renderTally() {
+  const c = Object.fromEntries(CANDIDATES.map(x => [x, 0]));
+  S.chain.forEach(b => b.votes.forEach(v => { if (v.candidate in c) c[v.candidate]++; }));
+  const total = Object.values(c).reduce((a, b) => a + b, 0), max = Math.max(1, ...Object.values(c));
+  $('tallyMeta').textContent = total + ' sealed vote' + (total === 1 ? '' : 's');
+  $('tally').innerHTML = CANDIDATES.map(n => `<div class="tally-row"><span>${esc(n)}</span><div class="bar"><i style="width:${c[n] / max * 100}%"></i></div><b>${c[n]}</b></div>`).join('');
+}
+function renderVoters() {
+  $('voters').innerHTML = S.voters.map((v, i) => {
+    const sealed = v.receipt, state = !v.ballot ? '<span class="chip">Not voted</span>' : sealed ? '<span class="chip ok">Vote sealed</span>' : '<span class="chip wait">In pending pool</span>';
+    const res = v.result ? `<div class="msg ${v.result.ok ? 'ok' : 'bad'}" style="flex-basis:100%">${esc(v.result.t)}</div>` : '';
+    return `<div class="voter"><span class="who">${esc(v.name)}</span><span class="cred mono" title="Secret credential, known only to the voter">secret ${esc(v.cred.slice(0, 8))}… → ledger ID ${esc(v.nullifier.slice(0, 8))}…</span>${state}${sealed ? `<button class="btn ghost small" data-a="receipt" data-i="${i}">Check receipt</button>` : ''}${res}</div>`;
+  }).join('') || '<p class="sub">No voters yet.</p>';
+  const sel = $('voterSel'), prev = sel.value, open = S.voters.map((v, i) => [v, i]).filter(([v]) => !v.ballot);
+  sel.innerHTML = open.length ? open.map(([v, i]) => `<option value="${i}">${esc(v.name)}</option>`).join('') : '<option value="">All registered voters have voted</option>';
+  if (open.some(([, i]) => String(i) === prev)) sel.value = prev;
+  $('castBtn').disabled = !open.length;
+}
+function renderPending() {
+  $('pending').innerHTML = S.pending.length ? `<div class="pending"><div class="row" style="justify-content:space-between"><span class="label">Pending pool (${S.pending.length} of ${BATCH})</span><button class="btn small" data-a="seal">Seal block now</button></div>${S.pending.map(v => `<div class="vote"><span class="cand">${esc(v.candidate)}</span><span class="mono">${esc(short(v.nullifier))}</span></div>`).join('')}<p class="msg">Blocks seal automatically at ${BATCH} votes. Pending votes are not on the chain yet.</p></div>` : '';
+}
+function renderBlocks(a) {
+  $('blocks').innerHTML = S.chain.map((b, i) => {
+    const bad = a.blocks[i], root = blockRoot(b), re = blockHash(b), mism = re !== b.hash;
+    const votes = b.votes.map((v, j) => `<div class="vote"><span class="cand">${esc(v.candidate)}</span><span class="mono">ballot ${esc(v.ballot_id)}</span><button class="btn danger small" data-a="flip" data-b="${i}" data-j="${j}">Tamper: change vote</button></div>`).join('');
+    return `<article class="block ${bad ? 'bad' : ''}">
+      <div class="block-head"><h3>${i === 0 ? 'Genesis block' : 'Block ' + i}</h3>${bad ? `<span class="chip bad">${esc(bad)}</span>` : '<span class="chip ok">Valid</span>'}</div>
+      <dl class="kv" style="margin:0">
+        <dt>Hash</dt><dd class="mono">${esc(b.hash)}</dd>
+        ${mism ? `<dt>Recomputed</dt><dd class="mono diff">${esc(re)}</dd>` : ''}
+        <dt>Previous</dt><dd class="mono">${esc(b.prev)}</dd>
+        <dt>Merkle root</dt><dd class="mono">${esc(root)}</dd>
+        <dt>Nonce</dt><dd class="mono">${b.nonce}</dd>
+      </dl>
+      ${b.votes.length ? `<div class="vlist">${votes}</div>
+      <div class="row"><button class="btn danger small" data-a="remine" data-b="${i}">Attacker re-mines this block</button></div>` : '<p class="msg">No votes. Anchors the chain.</p>'}
+    </article>`;
+  }).join('');
+}
+function render() { const a = audit(); renderBanner(a); renderTally(); renderVoters(); renderPending(); renderBlocks(a); }
+
+/* ---------- Events ---------- */
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-a]'); if (!t) return;
+  const a = t.dataset.a;
+  if (a === 'seal') seal();
+  if (a === 'reset') { seed(); $('regMsg').textContent = ''; $('voteMsg').textContent = ''; return; }
+  if (a === 'flip') {
+    const v = S.chain[+t.dataset.b].votes[+t.dataset.j]; v.candidate = CANDIDATES[(CANDIDATES.indexOf(v.candidate) + 1) % CANDIDATES.length];
+  }
+  if (a === 'remine') mine(S.chain[+t.dataset.b]);
+  if (a === 'receipt') { const v = S.voters[+t.dataset.i]; v.result = checkReceipt(v); }
+  render();
+});
+$('regForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const n = $('regName').value.trim(), m = $('regMsg');
+  if (!n) { m.className = 'msg bad'; m.textContent = 'Enter a voter name first.'; return; }
+  const c = register(n); $('regName').value = '';
+  m.className = 'msg ok'; m.textContent = 'Credential issued to ' + n + ' (' + c.slice(0, 8) + '…). Only its hash is on the eligible list.';
+  render();
+});
+$('voteForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const m = $('voteMsg'), i = $('voterSel').value, cand = (document.querySelector('input[name=cand]:checked') || {}).value;
+  if (i === '' ) return;
+  if (!cand) { m.className = 'msg bad'; m.textContent = 'Choose a candidate.'; return; }
+  try { const v = S.voters[+i]; castVote(v, cand); m.className = 'msg ok'; m.textContent = v.name + ' voted. The ballot is ' + (v.receipt ? 'sealed in a block.' : 'in the pending pool.'); }
+  catch (err) { m.className = 'msg bad'; m.textContent = err.message; }
+  render();
+});
+function seed() {
+  newElection();
+  ['Ada', 'Bola', 'Chidi', 'Dayo', 'Efe', 'Funke', 'Gbenga'].forEach(register);
+  S.voters.forEach(v => v.result = null);
+  render();
+}
+$('cands').innerHTML = CANDIDATES.map((c, i) => `<label><input type="radio" name="cand" value="${c}"${i === 0 ? ' checked' : ''}>${c}</label>`).join('');
+seed();
+</script>
+</body>
+</html>
