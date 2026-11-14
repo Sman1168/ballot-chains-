@@ -1,0 +1,20 @@
+databases:
+  - name: ballot-chain-db
+    plan: free
+    databaseName: ballot_chain
+    user: ballot_chain
+
+services:
+  - type: web
+    name: ballot-chain-app
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ballot-chain-db
+          property: connectionString
