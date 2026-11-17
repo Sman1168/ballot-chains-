@@ -108,9 +108,12 @@ function renderHome() {
     : `<div class="banner bad"><span class="dot"></span><div><strong>Tampering detected</strong><span class="d">${esc(a.msg)}</span></div></div>`;
   const c = Object.fromEntries(V.candidates.map(x => [x, 0]));
   chain.forEach(b => b.votes.forEach(v => { if (v.candidate in c) c[v.candidate]++; }));
-  const total = Object.values(c).reduce((x, y) => x + y, 0), max = Math.max(1, ...Object.values(c));
-  $('tallyMeta').textContent = total + ' sealed vote' + (total === 1 ? '' : 's');
-  $('tally').innerHTML = V.candidates.map(n => `<div class="tally-row"><span>${esc(n)}</span><div class="bar"><i style="width:${c[n] / max * 100}%"></i></div><b>${c[n]}</b></div>`).join('');
+  const pc = Object.fromEntries(V.candidates.map(x => [x, 0]));
+  V.pending.forEach(v => { if (v.candidate in pc) pc[v.candidate]++; });
+  const total = Object.values(c).reduce((x, y) => x + y, 0), waiting = V.pending.length;
+  const max = Math.max(1, ...V.candidates.map(n => c[n] + pc[n]));
+  $('tallyMeta').textContent = (total + waiting) + ' cast · ' + total + ' sealed · ' + waiting + ' pending';
+  $('tally').innerHTML = V.candidates.map(n => `<div class="tally-row" style="grid-template-columns:90px 1fr 70px"><span>${esc(n)}</span><div class="bar"><i style="width:${(c[n] + pc[n]) / max * 100}%"></i></div><b>${c[n] + pc[n]}${pc[n] ? ` <span class="mono" title="Not sealed into a block yet">(${pc[n]} pending)</span>` : ''}</b></div>`).join('');
   $('rollMeta').textContent = V.voters.length + ' registered';
   $('voters').innerHTML = V.voters.map((v, i) => {
     const state = v.status === 'none' ? '<span class="chip">Not voted</span>' : v.status === 'sealed' ? '<span class="chip ok">Vote sealed</span>' : '<span class="chip wait">In pending pool</span>';
