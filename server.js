@@ -9,10 +9,13 @@ const C = B.C;
 
 const PORT = process.env.PORT || 3000;
 const DEMO_TOOLS = (process.env.DEMO_TOOLS || 'on') !== 'off'; // set DEMO_TOOLS=off to hide tamper and reset buttons
-const FILES = { '/': 'index.html', '/index.html': 'index.html', '/core.js': 'core.js', '/app.js': 'app.js' };
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+const FILES = { '/': 'index.html', '/index.html': 'index.html', '/core.js': 'core.js', '/app.js': 'app.js', '/icon.svg': 'icon.svg', '/apple-touch-icon.png': 'apple-touch-icon.png' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png' };
 const staticCache = {};
-for (const f of new Set(Object.values(FILES))) staticCache[f] = fs.readFileSync(path.join(__dirname, f));
+const ICON = require('./icon-data.js');
+for (const f of new Set(Object.values(FILES))) if (!/^(icon\.svg|apple-touch-icon\.png)$/.test(f)) staticCache[f] = fs.readFileSync(path.join(__dirname, f));
+staticCache['icon.svg'] = Buffer.from(ICON.svg, 'utf8');
+staticCache['apple-touch-icon.png'] = Buffer.from(ICON.png, 'base64');
 
 /* ---------- Storage ---------- */
 function makeStore() {
