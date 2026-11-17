@@ -6,7 +6,7 @@
   'use strict';
 
   const C = {
-    DIFFICULTY: 3, BATCH: 3, CANDIDATES: ['Alice', 'Bob', 'Chioma'],
+    DIFFICULTY: 3, BATCH: 3, CANDIDATES: ['APC', 'PDP', 'ADC'],
     SESSION_MS: 120000, MAX_FAILS: 3, LOCK_MS: 30000, OTP_MS: 300000, MAX_CODE_TRIES: 3, MAX_RESENDS: 3,
     DEMO: [
       { name: 'Ada Okafor', phone: '08031234567', nin: '12345678901', card: '90F5B12345678901234' },
