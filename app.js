@@ -50,7 +50,10 @@ function makeLocal() {
     async flip(b, j) { B.flip(S, b, j); save(); return { ok: true }; },
     async remine(b) { B.remine(S, b); save(); return { ok: true }; },
     async receipt(i) { return B.checkReceipt(S, i); },
-    async reset() { S = B.seedDemo(B.newElection()); save(); return { ok: true }; }
+    async reset() { S = B.seedDemo(B.newElection()); save(); return { ok: true }; },
+    async adminLogin() { return { ok: false, disabled: true, error: 'The admin page needs the shared server.' }; },
+    async adminReset() { return { ok: false, error: 'The admin page needs the shared server.' }; },
+    async adminLogout() { return { ok: true }; }
   };
 }
 
@@ -71,12 +74,16 @@ function makeRemote() {
     flip: (b, j) => call('POST', '/api/flip', { b, j }),
     remine: b => call('POST', '/api/remine', { b }),
     receipt: i => call('GET', '/api/receipt?i=' + i),
-    reset: () => call('POST', '/api/reset', {})
+    reset: () => call('POST', '/api/reset', {}),
+    adminLogin: password => call('POST', '/api/admin/login', { password }),
+    adminReset: (token, i) => call('POST', '/api/admin/reset-voter', { token, i }),
+    adminLogout: token => call('POST', '/api/admin/logout', { token })
   };
 }
 
 /* ---------- Page state ---------- */
 let API = null, V = null, SESSION = null;
+let ADMIN = null; // { token, exp, msg, confirm } while the admin is signed in
 let F = { mode: null, data: {}, outcome: null, msg: '', title: '', ch: null };
 let RM = {}; // receipt messages by voter number
 const blank = () => ({ mode: null, data: {}, outcome: null, msg: '', title: '', ch: null });
@@ -90,18 +97,23 @@ const STEP_KEYS = STEPS.map(s => s.key), TOTAL = STEPS.length + 1, FLOW = $('vie
 const sessionOk = () => !!(SESSION && Date.now() < SESSION.exp);
 const stepBars = i => Array.from({ length: TOTAL }, (_, k) => `<i class="${k < i ? 'done' : k === i ? 'cur' : ''}"></i>`).join('');
 function netError() {
-  const el = ['otpMsg', 'stepMsg', 'voteMsg', 'accessMsg'].map($).find(x => x && x.offsetParent !== null);
+  const el = ['otpMsg', 'stepMsg', 'voteMsg', 'adminMsg', 'resultsMsg', 'accessMsg'].map($).find(x => x && x.offsetParent !== null);
   if (el) el.textContent = NET;
 }
 async function refresh() { V = await API.state(); }
 
-/* ---------- Home ---------- */
+/* ---------- Results page (ledger, tally, roll) ---------- */
+function setChips() {
+  ['modeChip', 'modeChip2'].forEach(id => {
+    const el = $(id); el.hidden = false;
+    el.className = 'chip ' + (API.mode === 'remote' ? 'ok' : 'wait');
+    el.textContent = API.mode === 'remote' ? 'Shared server database' : 'Saved in this browser only';
+  });
+}
 function renderHome() {
   if (!V) return;
   const a = V.audit, chain = V.chain;
-  $('modeChip').hidden = false;
-  $('modeChip').className = 'chip ' + (API.mode === 'remote' ? 'ok' : 'wait');
-  $('modeChip').textContent = API.mode === 'remote' ? 'Shared server database' : 'Saved in this browser only';
+  setChips();
   $('resetBtn').hidden = !V.tools;
   $('banner').innerHTML = a.ok
     ? `<div class="banner ok"><span class="dot"></span><div><strong>Audit passed</strong><span class="d">${chain.length} block${chain.length === 1 ? '' : 's'}, every hash and link verified.</span></div></div>`
@@ -114,8 +126,9 @@ function renderHome() {
   const max = Math.max(1, ...V.candidates.map(n => c[n] + pc[n]));
   $('tallyMeta').textContent = (total + waiting) + ' cast · ' + total + ' sealed · ' + waiting + ' pending';
   $('tally').innerHTML = V.candidates.map(n => `<div class="tally-row" style="grid-template-columns:90px 1fr 70px"><span>${esc(n)}</span><div class="bar"><i style="width:${(c[n] + pc[n]) / max * 100}%"></i></div><b>${c[n] + pc[n]}${pc[n] ? ` <span class="mono" title="Not sealed into a block yet">(${pc[n]} pending)</span>` : ''}</b></div>`).join('');
-  $('rollMeta').textContent = V.voters.length + ' registered';
+  $('rollMeta').textContent = V.voters.filter(v => v.status !== 'removed').length + ' registered';
   $('voters').innerHTML = V.voters.map((v, i) => {
+    if (v.status === 'removed') return '';
     const state = v.status === 'none' ? '<span class="chip">Not voted</span>' : v.status === 'sealed' ? '<span class="chip ok">Vote sealed</span>' : '<span class="chip wait">In pending pool</span>';
     const r = RM[i], res = r && r.t ? `<div class="msg ${r.ok ? 'ok' : 'bad'}" style="flex-basis:100%">${esc(r.t)}</div>` : '';
     return `<div class="voter"><span class="who mono">${esc(v.label)}</span>${state}${v.status === 'sealed' ? `<button class="btn ghost small" data-a="receipt" data-i="${i}">Check receipt</button>` : ''}${res}</div>`;
@@ -136,12 +149,78 @@ function renderHome() {
       ${b.votes.length ? `<div class="vlist">${votes}</div>${V.tools ? `<div class="row"><button class="btn danger small" data-a="remine" data-b="${i}">Attacker re-mines this block</button></div>` : ''}` : '<p class="msg">No votes. Anchors the chain.</p>'}
     </article>`;
   }).join('');
-  $('demoList').innerHTML = C.DEMO.map(d => `<div><b>${esc(d.name)}</b><span class="mono">Phone ${esc(d.phone)}</span><span class="mono">NIN ${esc(d.nin)}</span><span class="mono">Card ${esc(d.card)}</span></div>`).join('');
 }
 
-/* ---------- Pages (hash routes: home, name, phone, nin, card, code, vote, done, registered, denied) ---------- */
-function showView(flow) { $('view-home').hidden = flow; FLOW.hidden = !flow; }
+/* ---------- Pages (hash routes: home, signin, register, results, admin, name, phone, nin, card, code, vote, done, registered, denied) ---------- */
+function showView(name) { $('view-front').hidden = name !== 'front'; $('view-home').hidden = name !== 'results'; FLOW.hidden = name !== 'flow'; }
 function redirect(h) { location.replace('#' + h); }
+const demoHtml = () => C.DEMO.map(d => `<div><b>${esc(d.name)}</b><span class="mono">Phone ${esc(d.phone)}</span><span class="mono">NIN ${esc(d.nin)}</span><span class="mono">Card ${esc(d.card)}</span></div>`).join('');
+function renderSignin() {
+  FLOW.innerHTML = `<section class="panel flow">
+    <div class="panel-head"><span class="label">Sign in</span><button class="btn ghost small" type="button" data-go="home">Home</button></div>
+    <h2>Sign in to vote</h2>
+    <p class="sub">You will be asked for your full name, phone number, NIN and voter's card number, one on each page, then a one-time code sent to your phone. Use the same four details you registered with.</p>
+    <div class="row"><button class="btn" type="button" data-a="start-signin">Start sign-in</button><button class="btn ghost" type="button" data-go="register">I need to register</button></div>
+    <div class="notice"><b>Forgot the details you registered with?</b> They are kept only as hashes, so nobody can read them back for you. Ask the election admin to reset your registration, then register again and write the four details down.</div>
+    <details>
+      <summary>Demo accounts for testing</summary>
+      <p class="sub" style="margin-top:8px">Made-up details for this demo only. Do not enter your own NIN or voter's card number.</p>
+      <div class="demo">${demoHtml()}</div>
+    </details>
+  </section>`;
+  showView('flow');
+}
+function renderRegister() {
+  FLOW.innerHTML = `<section class="panel flow">
+    <div class="panel-head"><span class="label">Register</span><button class="btn ghost small" type="button" data-go="home">Home</button></div>
+    <h2>Register as a voter</h2>
+    <p class="sub">Registration takes your full name, phone number, NIN and voter's card number, one on each page, then a one-time code sent to your phone. Each NIN and voter's card can be registered once.</p>
+    <div class="notice"><b>Keep a note of what you enter.</b> You need the same four details, spelled the same way, every time you sign in. They cannot be read back later.</div>
+    <div class="row"><button class="btn" type="button" data-a="start-register">Start registration</button><button class="btn ghost" type="button" data-go="signin">I already registered</button></div>
+  </section>`;
+  showView('flow');
+}
+async function renderAdmin() {
+  const adminOn = !!(ADMIN && Date.now() < ADMIN.exp);
+  if (API.mode !== 'remote') {
+    FLOW.innerHTML = `<section class="panel flow"><div class="panel-head"><span class="label">Admin</span><button class="btn ghost small" type="button" data-go="home">Home</button></div>
+      <h2>Admin</h2><p class="sub">The admin page needs the shared server and database. This copy of the page is saved in this browser only.</p></section>`;
+    return showView('flow');
+  }
+  if (!adminOn) {
+    ADMIN = null;
+    FLOW.innerHTML = `<section class="panel flow">
+      <div class="panel-head"><span class="label">Admin</span><button class="btn ghost small" type="button" data-go="home">Home</button></div>
+      <h2>Admin sign-in</h2>
+      <form id="adminForm" class="field" novalidate>
+        <label for="adminPw">Admin password</label>
+        <input id="adminPw" name="password" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Password">
+        <p class="msg bad" id="adminMsg" role="alert"></p>
+        <div class="row"><button class="btn" type="submit">Sign in</button></div>
+      </form>
+    </section>`;
+    showView('flow'); $('adminPw').focus(); return;
+  }
+  try { await refresh(); } catch (e) { ADMIN.msg = NET; }
+  const list = V ? V.voters : [], live = list.filter(v => v.status !== 'removed');
+  const rows = list.map((v, i) => {
+    if (v.status === 'removed') return '';
+    if (v.status !== 'none') return `<div class="voter"><span class="who mono">${esc(v.label)}</span><span class="chip ok">Voted</span><span class="msg" style="min-height:0">Cannot be reset</span></div>`;
+    const ask = ADMIN.confirm === i;
+    return `<div class="voter"><span class="who mono">${esc(v.label)}</span><span class="chip">Not voted</span>${ask
+      ? `<span class="msg" style="min-height:0">Reset this registration?</span><button class="btn danger small" type="button" data-a="admin-yes" data-i="${i}">Yes, reset</button><button class="btn ghost small" type="button" data-a="admin-no">Cancel</button>`
+      : `<button class="btn ghost small" type="button" data-a="admin-reset" data-i="${i}">Reset registration</button>`}</div>`;
+  }).join('') || '<p class="sub">No voters registered yet.</p>';
+  FLOW.innerHTML = `<section class="panel">
+    <div class="panel-head"><span class="label">Admin</span><div class="row"><button class="btn ghost small" type="button" data-go="home">Home</button><button class="btn ghost small" type="button" data-a="admin-out">Sign out of admin</button></div></div>
+    <h2>Registered voters</h2>
+    <p class="sub">Voters' details are kept only as hashes, so nobody, including the admin, can read a forgotten detail back. If a voter cannot sign in, reset their registration here. They can then register again. A voter who has already voted cannot be reset.</p>
+    <p class="msg ${ADMIN.msg && ADMIN.msg.startsWith('Registration reset') ? 'ok' : 'bad'}" id="adminMsg" role="alert">${esc(ADMIN.msg || '')}</p>
+    <div class="label">${live.length} registered</div>
+    <div class="voters">${rows}</div>
+  </section>`;
+  showView('flow');
+}
 function renderCode() {
   const signin = F.mode === 'signin', ch = F.ch, mins = Math.round(C.OTP_MS / 60000);
   FLOW.innerHTML = `<section class="panel flow">
@@ -161,7 +240,7 @@ function renderCode() {
     </form>
     <div class="notice"><b>Demo SMS inbox.</b> A real system sends this by SMS to the registered phone. No text message is sent here, so the code is shown instead.<br><span class="mono" id="smsBox">Ballot Chain code: ${esc(ch.code)}</span></div>
   </section>`;
-  showView(true); $('otpInput').focus();
+  showView('flow'); $('otpInput').focus();
 }
 function renderStep(i) {
   const st = STEPS[i], signin = F.mode === 'signin';
@@ -183,9 +262,9 @@ function renderStep(i) {
         <button class="btn" type="submit">Continue</button>
       </div>
     </form>
-    <p class="notice">Demo only. ${where} Do not enter a real NIN or voter's card number; use the demo accounts on the home page.</p>
+    <p class="notice">Demo only. ${where} Do not enter a real NIN or voter's card number; use the demo accounts on the sign-in page.</p>
   </section>`;
-  showView(true); $('stepInput').focus();
+  showView('flow'); $('stepInput').focus();
 }
 function renderVote() {
   FLOW.innerHTML = `<section class="panel flow">
@@ -199,21 +278,21 @@ function renderVote() {
     </form>
     <p class="notice">Your session ends after ${C.SESSION_MS / 60000} minutes or when you cast your vote. The ledger stores an anonymous ID, not your name.</p>
   </section>`;
-  showView(true);
+  showView('flow');
 }
 function renderOutcome(kind) {
   const body = {
     done: `<div class="banner ok"><span class="dot"></span><div><strong>Vote recorded</strong><span class="d">${F.block != null ? 'Sealed in block ' + F.block + '.' : 'In the pending pool. It is sealed into a block when ' + C.BATCH + ' votes are in.'}</span></div></div>
-      <p class="sub">Ballot ID <span class="mono">${esc(F.ballot || '')}</span>. You have been signed out. Use "Check receipt" on the home page to confirm your vote stays unchanged.</p>
-      <div class="row"><button class="btn" type="button" data-go="home">Back to results</button></div>`,
+      <p class="sub">Ballot ID <span class="mono">${esc(F.ballot || '')}</span>. You have been signed out. Use "Check receipt" on the results page to confirm your vote stays unchanged.</p>
+      <div class="row"><button class="btn" type="button" data-go="results">See the results</button><button class="btn ghost" type="button" data-go="home">Home</button></div>`,
     registered: `<div class="banner ok"><span class="dot"></span><div><strong>Voter record created</strong><span class="d">Your details are stored only as salted hashes.</span></div></div>
-      <p class="sub">Now sign in with the same four details to vote.</p>
+      <p class="sub">Now sign in with the same four details to vote. Keep a note of the name, phone number, NIN and voter's card number you just used. If you forget them, the election admin has to reset your registration.</p>
       <div class="row"><button class="btn" type="button" data-a="start-signin">Sign in now</button><button class="btn ghost" type="button" data-go="home">Home</button></div>`,
     denied: `<div class="banner bad"><span class="dot"></span><div><strong>${esc(F.title)}</strong><span class="d">${esc(F.msg)}</span></div></div>
       <div class="row"><button class="btn" type="button" data-a="again">Try again</button><button class="btn ghost" type="button" data-go="home">Home</button></div>`
   }[kind];
   FLOW.innerHTML = `<section class="panel flow">${body}</section>`;
-  showView(true);
+  showView('flow');
 }
 async function route() {
   const r = location.hash.slice(1) || 'home', idx = STEP_KEYS.indexOf(r);
@@ -232,10 +311,18 @@ async function route() {
   } else if (r === 'done' || r === 'registered' || r === 'denied') {
     if (F.outcome !== r) return redirect('home');
     renderOutcome(r);
-  } else {
-    showView(false);
-    try { await refresh(); } catch (e) { $('accessMsg').textContent = NET; }
+  } else if (r === 'signin') {
+    renderSignin();
+  } else if (r === 'register') {
+    renderRegister();
+  } else if (r === 'admin') {
+    await renderAdmin();
+  } else if (r === 'results') {
+    showView('results'); $('resultsMsg').textContent = '';
+    try { await refresh(); } catch (e) { $('resultsMsg').textContent = NET; }
     renderHome();
+  } else {
+    showView('front'); setChips();
   }
   window.scrollTo(0, 0);
 }
@@ -279,6 +366,15 @@ async function onClick(e) {
     if (!r.ok) { $('otpMsg').textContent = r.error; return; }
     F.ch.code = r.demoCode; renderCode(); $('otpMsg').textContent = 'A new code was sent. The old code no longer works.'; return;
   }
+  if (a === 'admin-reset') { ADMIN.confirm = +t.dataset.i; ADMIN.msg = ''; return renderAdmin(); }
+  if (a === 'admin-no') { ADMIN.confirm = null; return renderAdmin(); }
+  if (a === 'admin-yes') {
+    const r = await API.adminReset(ADMIN.token, +t.dataset.i);
+    if (r.expired) { ADMIN = null; return renderAdmin(); }
+    ADMIN.confirm = null; ADMIN.msg = r.ok ? 'Registration reset. The voter can register again.' : (r.error || NET);
+    return renderAdmin();
+  }
+  if (a === 'admin-out') { await API.adminLogout(ADMIN.token).catch(() => {}); ADMIN = null; location.hash = '#home'; return; }
   if (a === 'reset') { await API.reset(); RM = {}; $('accessMsg').textContent = ''; }
   if (a === 'seal') await API.seal();
   if (a === 'flip') await API.flip(+t.dataset.b, +t.dataset.j);
@@ -294,6 +390,14 @@ async function onSubmit(e) {
     if (err) { $('stepMsg').textContent = err; $('stepInput').focus(); return; }
     F.data[STEPS[i].key] = val;
     if (i < STEPS.length - 1) location.hash = '#' + STEP_KEYS[i + 1]; else await afterDetails();
+  }
+  if (e.target.id === 'adminForm') {
+    const pw = $('adminPw').value;
+    if (!pw) { $('adminMsg').textContent = 'Enter the admin password.'; $('adminPw').focus(); return; }
+    const r = await API.adminLogin(pw);
+    if (!r.ok) { $('adminMsg').textContent = r.error || NET; $('adminPw').value = ''; return; }
+    ADMIN = { token: r.token, exp: Date.now() + 15 * 60000, msg: '', confirm: null };
+    return renderAdmin();
   }
   if (e.target.id === 'otpForm') {
     const entered = $('otpInput').value.trim();
@@ -316,7 +420,7 @@ document.addEventListener('click', e => { onClick(e).catch(netError); });
 document.addEventListener('submit', e => { onSubmit(e).catch(netError); });
 window.addEventListener('hashchange', () => { route().catch(netError); });
 setInterval(async () => { /* shared mode: show other people's votes without a refresh */
-  if (!API || API.mode !== 'remote' || document.hidden || (location.hash || '#home') !== '#home') return;
+  if (!API || API.mode !== 'remote' || document.hidden || location.hash !== '#results') return;
   try { await refresh(); renderHome(); } catch (e) { /* try again next time */ }
 }, 8000);
 
@@ -328,6 +432,6 @@ setInterval(async () => { /* shared mode: show other people's votes without a re
     if (j && j.ok && j.view) API = makeRemote();
   } catch (e) { /* no server here: use this browser */ }
   if (!API) API = makeLocal();
-  if (location.hash && location.hash !== '#home') location.replace('#home');
+  if (location.hash && !['#home', '#signin', '#register', '#results', '#admin'].includes(location.hash)) location.replace('#home');
   await route();
 })();
