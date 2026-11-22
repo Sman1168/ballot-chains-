@@ -130,17 +130,40 @@ summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
 .demo { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .demo div { display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid var(--line); }
 .demo div:first-child { border-top: 0; padding-top: 0; }
+.menu { display: flex; flex-direction: column; gap: 10px; }
+.menu-btn { display: flex; flex-direction: column; gap: 2px; text-align: left; width: 100%; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: pointer; }
+.menu-btn:hover { border-color: var(--accent); }
+.menu-btn b { font-family: var(--font-display); font-size: 1.05rem; color: var(--accent); }
+.menu-btn span { color: var(--muted); font-size: 0.88rem; }
 @media (prefers-reduced-motion: no-preference) { .bar i { transition: width 0.3s; } }
 </style>
 </head>
 <body>
 <main>
 
-<div class="view" id="view-home">
+<div class="view" id="view-front">
   <header>
     <div class="row"><span class="label">Tamper-evident e-voting prototype</span><span class="chip" id="modeChip" hidden></span></div>
     <h1>Ballot Chain</h1>
     <p class="sub">Voters sign in with four details, one page at a time, plus a phone code. Their ballots are sealed into a hash-linked chain. Edit a recorded vote and the audit catches it. This is an example election you can reset at any time.</p>
+  </header>
+  <section class="panel">
+    <div class="menu">
+      <button class="menu-btn" type="button" data-go="signin"><b>Sign in to vote</b><span>Already registered? Sign in and cast your vote.</span></button>
+      <button class="menu-btn" type="button" data-go="register"><b>Register as a voter</b><span>First time here? Create your voter record.</span></button>
+      <button class="menu-btn" type="button" data-go="results"><b>Results and ledger</b><span>See the tally, the voter roll and the audit.</span></button>
+    </div>
+    <p class="msg bad" id="accessMsg"></p>
+  </section>
+  <footer>Simplified for teaching: no real NIN or INEC lookup, no network consensus, low proof-of-work difficulty and a trusted registrar. A real system would verify identities against official records and use a slow password hash.</footer>
+  <div class="row"><button class="btn ghost small" type="button" data-go="admin">Admin</button></div>
+</div>
+
+<div class="view" id="view-home" hidden>
+  <header>
+    <div class="row"><button class="btn ghost small" type="button" data-go="home">Home</button><span class="label">Results and ledger</span><span class="chip" id="modeChip2" hidden></span></div>
+    <h1>Results</h1>
+    <p class="msg bad" id="resultsMsg"></p>
   </header>
 
   <div id="banner"></div>
@@ -148,21 +171,6 @@ summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
   <section class="panel">
     <div class="panel-head"><h2>Result from the ledger</h2><span class="label" id="tallyMeta"></span></div>
     <div class="tally" id="tally"></div>
-  </section>
-
-  <section class="panel">
-    <div class="panel-head"><h2>Voter access</h2><span class="label">Sign in to vote</span></div>
-    <p class="sub">Sign-in asks for your full name, phone number, NIN and voter's card number, each on its own page, then a one-time code sent to your phone. Only salted hashes of these details are kept.</p>
-    <div class="row">
-      <button class="btn" type="button" data-a="start-signin">Sign in to vote</button>
-      <button class="btn ghost" type="button" data-a="start-register">Register as a voter</button>
-    </div>
-    <p class="msg bad" id="accessMsg"></p>
-    <details>
-      <summary>Demo accounts for testing</summary>
-      <p class="sub" style="margin-top:8px">Made-up details for this demo only. Do not enter your own NIN or voter's card number.</p>
-      <div class="demo" id="demoList"></div>
-    </details>
   </section>
 
   <section class="panel">
@@ -177,8 +185,6 @@ summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
     <p class="sub">Sign in and cast a few votes (a block seals every 3 votes). Then use the red buttons to play the attacker. The audit recomputes every hash from the stored data and flags the first block that no longer matches. Re-mining a block fixes its own hash, but the next block's link to it breaks, so try it on a block that is not the last one.</p>
     <div class="blocks" id="blocks"></div>
   </section>
-
-  <footer>Simplified for teaching: no real NIN or INEC lookup, no network consensus, low proof-of-work difficulty and a trusted registrar. A real system would verify identities against official records and use a slow password hash.</footer>
 </div>
 
 <div class="view" id="view-flow" hidden></div>
