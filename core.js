@@ -156,11 +156,11 @@
     const b = { index: S.chain.length, votes: S.pending, prev: S.chain[S.chain.length - 1].hash, time: Date.now() / 1000, nonce: 0, hash: '' };
     mine(b); S.chain.push(b); S.pending = [];
     const leaves = b.votes.map(voteHash), root = merkleRoot(leaves);
-    b.votes.forEach((v, i) => { const vt = S.voters.find(x => x.nullifier === v.nullifier); if (vt) vt.receipt = { block: b.index, leaf: leaves[i], proof: merkleProof(leaves, i), root }; });
+    b.votes.forEach((v, i) => { const vt = S.voters.find(x => !x.removed && x.nullifier === v.nullifier); if (vt) vt.receipt = { block: b.index, leaf: leaves[i], proof: merkleProof(leaves, i), root }; });
   }
   function castVote(S, voterIdx, candidate) {
     const voter = S.voters[voterIdx];
-    if (!voter) throw new Error('Not an eligible voter');
+    if (!voter || voter.removed) throw new Error('Not an eligible voter');
     if (!C.CANDIDATES.includes(candidate)) throw new Error('Unknown candidate');
     if (!S.eligible[voter.nullifier]) throw new Error('Not an eligible voter');
     if (S.used[voter.nullifier]) throw new Error('You have already voted. Double voting is rejected.');
@@ -168,6 +168,15 @@
     S.used[voter.nullifier] = true; voter.ballot = v.ballot_id; S.pending.push(v);
     if (S.pending.length >= C.BATCH) seal(S);
     return { ballot: v.ballot_id, block: voter.receipt ? voter.receipt.block : null };
+  }
+  /* Admin: clear a registration so the person can register again. Not allowed once a ballot exists, so nobody can vote twice. The slot stays (marked removed) so other voters' positions never shift. */
+  function resetVoter(S, i) {
+    const v = S.voters[i];
+    if (!v || v.removed) throw new Error('No such registration.');
+    if (v.ballot) throw new Error('This voter has already voted, so the registration cannot be reset.');
+    delete S.eligible[v.nullifier];
+    v.removed = true; v.nameH = null; v.phoneH = null; v.ninH = null; v.cardH = null; v.receipt = null;
+    return true;
   }
   function flip(S, b, j) {
     const blk = S.chain[b], v = blk && blk.votes[j]; if (!v) return false;
@@ -208,12 +217,12 @@
       candidates: C.CANDIDATES,
       chain: S.chain,
       pending: S.pending.map(v => ({ candidate: v.candidate, nullifier: v.nullifier })),
-      voters: S.voters.map(v => ({ label: v.label, status: !v.ballot ? 'none' : v.receipt ? 'sealed' : 'pending', block: v.receipt ? v.receipt.block : null })),
+      voters: S.voters.map(v => ({ label: v.label, status: v.removed ? 'removed' : !v.ballot ? 'none' : v.receipt ? 'sealed' : 'pending', block: v.receipt ? v.receipt.block : null })),
       audit: audit(S)
     };
   }
 
   return { C, sha, randHex, randCode, validate, validateAll, maskName, maskPhone, newElection, seedDemo, enroll, isState,
     newGuard, lockSeconds, failAttempt, makeChallenge, resendChallenge, verifyChallenge,
-    seal, castVote, flip, remine, audit, checkReceipt, publicView, blockRoot, blockHash };
+    seal, castVote, resetVoter, flip, remine, audit, checkReceipt, publicView, blockRoot, blockHash };
 });
