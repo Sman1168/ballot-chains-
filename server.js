@@ -44,6 +44,12 @@ const challenges = new Map(); // id -> challenge (short-lived, memory only)
 const sessions = new Map();   // token -> { i, exp }
 const guards = new Map();     // client -> failed-attempt counter
 const rates = new Map();      // client -> request counter
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''; // set this on the server to turn the admin page on
+const adminSessions = new Map(); // token -> expiry time
+const adminGuards = new Map();   // client -> wrong-password counter
+const ADMIN_MS = 15 * 60000;
+const same = (a, b) => crypto.timingSafeEqual(crypto.createHash('sha256').update(String(a)).digest(), crypto.createHash('sha256').update(String(b)).digest());
+const adminOk = t => { const e = adminSessions.get(String(t)); if (e && Date.now() < e) return true; adminSessions.delete(String(t)); return false; };
 
 /* One change at a time, so two voters can never overwrite each other. */
 let queue = Promise.resolve();
@@ -62,6 +68,7 @@ setInterval(() => {
   for (const [k, c] of challenges) if (now > c.exp + 60000) challenges.delete(k);
   for (const [k, s] of sessions) if (now > s.exp) sessions.delete(k);
   for (const [k, r] of rates) if (now > r.reset) rates.delete(k);
+  for (const [k, e] of adminSessions) if (now > e) adminSessions.delete(k);
 }, 60000).unref();
 
 /* ---------- HTTP helpers ---------- */
@@ -128,6 +135,24 @@ async function api(req, res, url) {
       sessions.delete(String(body.token));
       return json(res, { ok: true, ballot: r.ballot, block: r.block });
     } catch (e) { return json(res, { ok: false, error: e.message }); }
+  }
+  if (p === '/api/admin/login') {
+    if (!ADMIN_PASSWORD) return json(res, { ok: false, disabled: true, error: 'The admin page is turned off. Set ADMIN_PASSWORD on the server to turn it on.' });
+    let g = adminGuards.get(cid); if (!g) { g = B.newGuard(); adminGuards.set(cid, g); }
+    if (B.lockSeconds(g) > 0) return json(res, { ok: false, error: 'Too many wrong passwords. Try again in ' + B.lockSeconds(g) + ' seconds.' });
+    if (!same(body.password || '', ADMIN_PASSWORD)) {
+      if (++g.fails >= 5) { g.fails = 0; g.lockUntil = Date.now() + 60000; }
+      return json(res, { ok: false, error: 'Wrong password.' });
+    }
+    g.fails = 0;
+    const token = crypto.randomBytes(16).toString('hex'); adminSessions.set(token, Date.now() + ADMIN_MS);
+    return json(res, { ok: true, token });
+  }
+  if (p === '/api/admin/logout') { adminSessions.delete(String(body.token)); return json(res, { ok: true }); }
+  if (p === '/api/admin/reset-voter') {
+    if (!adminOk(body.token)) return json(res, { ok: false, expired: true, error: 'Your admin session has ended. Sign in again.' });
+    try { await mutate(async () => B.resetVoter(S, parseInt(body.i, 10))); return json(res, { ok: true }); }
+    catch (e) { return json(res, { ok: false, error: e.message }); }
   }
   if (p === '/api/seal') { await mutate(async () => B.seal(S)); return json(res, { ok: true }); }
   if (p === '/api/flip') { if (needTools(res)) return; await mutate(async () => B.flip(S, +body.b, +body.j)); return json(res, { ok: true }); }
